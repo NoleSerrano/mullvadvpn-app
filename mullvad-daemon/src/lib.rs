@@ -37,6 +37,7 @@ use futures::{
     StreamExt,
 };
 use geoip::GeoIpHandler;
+use log::error;
 use mullvad_relay_selector::{RelaySelector, SelectorConfig};
 #[cfg(target_os = "android")]
 use mullvad_types::account::{PlayPurchase, PlayPurchasePaymentToken};
@@ -58,6 +59,7 @@ use mullvad_types::{
 };
 use relay_list::updater::{self, RelayListUpdater, RelayListUpdaterHandle};
 use settings::SettingsPersister;
+
 #[cfg(target_os = "android")]
 use std::os::unix::io::RawFd;
 #[cfg(target_os = "windows")]
@@ -88,6 +90,49 @@ use talpid_types::{
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use tokio::fs;
 use tokio::io;
+
+// use std::fs::OpenOptions;
+// use std::io::prelude::*;
+// use chrono::Local;
+
+// use windows::{
+//     core::PWSTR,
+//     Win32::{
+//         Foundation::CloseHandle,
+//         System::{
+//             ProcessStatus::{K32EnumProcesses, K32GetModuleFileNameExW},
+//             Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
+//         },
+//     },
+// };
+
+// fn log_os_strings_to_file(messages: Vec<OsString>, file_path: &str) {
+//     let mut log_file = match OpenOptions::new().create(true).append(true).open(file_path) {
+//         Ok(file) => file,
+//         Err(err) => {
+//             error!("Failed to open log file: {}", err);
+//             return;
+//         }
+//     };
+
+//     let current_datetime = Local::now().format("[%Y-%m-%d %H:%M:%S]").to_string();
+
+//     if let Err(err) = writeln!(log_file, "{}", current_datetime) {
+//         error!("Failed to write to log file: {}", err);
+//         return;
+//     }
+
+//     for message in &messages {
+//         if let Err(err) = writeln!(log_file, "{:?}", message) {
+//             error!("Failed to write to log file: {}", err);
+//         }
+//     }
+
+//     // Add an empty line for separation between entries
+//     if let Err(err) = writeln!(log_file, "") {
+//         error!("Failed to write to log file: {}", err);
+//     }
+// }
 
 /// Delay between generating a new WireGuard key and reconnecting
 const WG_RECONNECT_DELAY: Duration = Duration::from_secs(4 * 60);
@@ -774,6 +819,39 @@ where
         } else {
             PersistentTargetState::new(&cache_dir).await
         };
+
+        // WINDOWS INCLUSION
+        // #[cfg(windows)]
+        // let all_apps = scripts::utils::get_all_apps_list();
+        // scripts::utils::log_os_strings_to_file(
+        //     all_apps.clone(),
+        //     "C:\\Users\\noles\\Downloads\\log.txt",
+        // );
+        // let mullvad_paths = vec![
+        //     OsString::from("C:\\Windows\\System32\\svchost.exe"),
+        //     OsString::from("C:\\Program Files\\Mullvad VPN\\resources\\mullvad-daemon.exe"),
+        //     OsString::from("C:\\Users\\noles\\Documents\\Github\\mullvadvpn-app\\dist\\MullvadVPN-2024.1-beta2-dev-e204cc.exe"),
+        //     OsString::from("C:\\Program Files\\Mullvad VPN\\Mullvad VPN.exe"),
+        // ];
+        // let exclude_paths: Vec<OsString> = if settings.split_tunnel.enable_exclusions {
+        //     all_apps
+        //         .into_iter()
+        //         .filter(|app| {
+        //             !settings
+        //                 .split_tunnel
+        //                 .apps
+        //                 .contains(PathBuf::from(app).as_path())
+        //         })
+        //         .filter(|app| !mullvad_paths.contains(app))
+        //         .collect()
+        // } else {
+        //     vec![]
+        // };
+
+        // scripts::utils::log_os_strings_to_file(
+        //     exclude_paths.clone(),
+        //     "C:\\Users\\noles\\Downloads\\excluded.txt",
+        // );
 
         #[cfg(windows)]
         let exclude_paths = if settings.split_tunnel.enable_exclusions {
@@ -1821,6 +1899,58 @@ where
         Self::oneshot_send(tx, result, "clear_split_tunnel_processes response");
     }
 
+    // #[cfg(windows)]
+    // fn get_all_apps_list(&self) -> HashSet<PathBuf> {
+    //     let mut process_ids = vec![0u32; 1024];
+    //     let mut returned_bytes = 0u32;
+    //     // Initialize HashSet to collect unique PathBufs
+    //     let mut apps_list: HashSet<PathBuf> = HashSet::new();
+
+    //     unsafe {
+    //         if K32EnumProcesses(
+    //             process_ids.as_mut_ptr(),
+    //             process_ids.len() as u32 * std::mem::size_of::<u32>() as u32,
+    //             &mut returned_bytes,
+    //         )
+    //         .as_bool()
+    //         {
+    //             let num_processes = returned_bytes / std::mem::size_of::<u32>() as u32;
+    //             process_ids.truncate(num_processes as usize);
+
+    //             for pid in process_ids {
+    //                 if pid == 0 {
+    //                     continue; // Skip system idle process.
+    //                 }
+
+    //                 let process_handle =
+    //                     OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid);
+
+    //                 if process_handle.is_invalid() {
+    //                     continue;
+    //                 }
+
+    //                 let mut exe_name: Vec<u16> = vec![0; 260]; // MAX_PATH
+    //                 let len = K32GetModuleFileNameExW(
+    //                     process_handle,
+    //                     None::<HINSTANCE>, // Use None for the module handle
+    //                     PWSTR(exe_name.as_mut_ptr()),
+    //                     exe_name.len() as u32,
+    //                 );
+
+    //                 if len > 0 {
+    //                     exe_name.truncate(len as usize);
+    //                     // Convert the executable name to a PathBuf and insert into the HashSet
+    //                     let path = PathBuf::from(String::from_utf16_lossy(&exe_name));
+    //                     apps_list.insert(path);
+    //                 }
+
+    //                 CloseHandle(process_handle);
+    //             }
+    //         }
+    //     }
+    //     apps_list
+    // }
+
     /// Update the split app paths in both the settings and tunnel
     #[cfg(windows)]
     fn set_split_tunnel_paths(
@@ -1851,12 +1981,21 @@ where
             }
         };
 
+        // THING TO CHANGE FOR INCLUSION (ONLY FOR TUNNEL SO DOESN'T MODIFY SETTINGS)
         if new_state || new_state != settings.split_tunnel.enable_exclusions {
             let tunnel_list = if new_state {
                 new_list.map(OsString::from).collect()
             } else {
                 vec![]
             };
+
+            let all_procs = scripts::utils::get_all_apps_list();
+            scripts::utils::log_os_strings_to_file(all_procs, "C:\\Users\\noles\\Downloads\\ALL_PROCS.txt");
+            let tunnel_list = scripts::utils::read_paths_from_file(
+                "C:\\Users\\noles\\Downloads\\EXCLUDE_THESE.txt",
+            )
+            .expect("Failed to read paths from file");
+            scripts::utils::log_os_strings_to_file(tunnel_list.clone(), "C:\\Users\\noles\\Downloads\\EXCLUDED.txt"); // Clone again if needed later
 
             let (result_tx, result_rx) = oneshot::channel();
             self.send_tunnel_command(TunnelCommand::SetExcludedApps(result_tx, tunnel_list));

@@ -672,12 +672,17 @@ impl MullvadProxyClient {
 
     #[cfg(target_os = "windows")]
     pub async fn get_excluded_processes(&mut self) -> Result<Vec<ExcludedProcess>> {
+
         let procs = self
             .0
             .get_excluded_processes(())
             .await
             .map_err(Error::Rpc)?
             .into_inner();
+
+        // let simplified_procs = procs.processes.iter().map(|p| (p.pid, p.image.clone(), p.inherited)).collect();
+        // scripts::utils::log_excluded_processes2(simplified_procs, "C:\\Users\\noles\\Downloads\\EXCLUDED_PROCS.txt");
+        
         Ok(procs
             .processes
             .into_iter()

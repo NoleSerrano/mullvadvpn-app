@@ -856,6 +856,7 @@ impl ManagementService for ManagementServiceImpl {
         Ok(Response::new(()))
     }
 
+    // GET EXCLUDED PROCESSES FOR WINDOWS
     #[cfg(windows)]
     async fn get_excluded_processes(
         &self,
@@ -867,7 +868,7 @@ impl ManagementService for ManagementServiceImpl {
         self.wait_for_result(rx)
             .await?
             .map_err(map_split_tunnel_error)
-            .map(|processes| {
+            .map(|processes: Vec<talpid_types::split_tunnel::ExcludedProcess>| {
                 Response::new(types::ExcludedProcessList {
                     processes: processes
                         .into_iter()

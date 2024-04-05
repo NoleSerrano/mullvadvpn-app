@@ -11,6 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+scripts = { path = "../scripts" }
 chrono = { workspace = true }
 err-derive = { workspace = true }
 mullvad-types = { path = "../mullvad-types" }

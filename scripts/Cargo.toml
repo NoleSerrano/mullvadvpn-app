@@ -1,0 +1,19 @@
+[package]
+name = "scripts"
+version = "0.1.0"
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+winapi = { version = "0.3", features = ["winuser"] }
+talpid-types = { path = "../talpid-types" }
+chrono = "0.4"
+log = "0.4"
+
+[lints]
+workspace = true

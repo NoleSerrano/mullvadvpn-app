@@ -15,6 +15,7 @@ workspace = true
 api-override = ["mullvad-api/api-override"]
 
 [dependencies]
+scripts = { path = "../scripts" }
 chrono = { workspace = true }
 err-derive = { workspace = true }
 fern = { version = "0.6", features = ["colored"] }
@@ -61,6 +62,7 @@ objc = { version = "0.2.7", features = ["exception", "verify_message"] }
 [target.'cfg(windows)'.dependencies]
 ctrlc = "3.0"
 windows-service = "0.6.0"
+windows = { version = "0.33.0", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
 winapi = { version = "0.3", features = ["winnt", "excpt"] }
 dirs = "5.0.1"
 talpid-windows = { path = "../talpid-windows" }

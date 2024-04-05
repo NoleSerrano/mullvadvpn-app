@@ -11,6 +11,8 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+scripts = { path = "../scripts" }
+winapi = { version = "0.3", features = ["tlhelp32", "processthreadsapi", "handleapi"] }
 chrono = { workspace = true, features = ["clock"] }
 err-derive = { workspace = true }
 futures = "0.3.15"

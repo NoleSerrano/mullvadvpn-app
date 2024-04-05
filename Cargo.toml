@@ -24,7 +24,7 @@ members = [
     "mullvad-relay-selector",
     "mullvad-setup",
     "mullvad-types",
-    "mullvad-version",
+    "mullvad-version", "scripts",
     "talpid-core",
     "talpid-dbus",
     "talpid-future",

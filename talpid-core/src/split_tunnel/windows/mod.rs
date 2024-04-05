@@ -4,8 +4,23 @@ mod service;
 mod volume_monitor;
 mod windows;
 
+// use std::fs::OpenOptions;
+// use std::io::Write;
+// use chrono::Local;
+use log::error;
+
+use std::os::windows::ffi::OsStringExt;
+use winapi::shared::minwindef::{DWORD, MAX_PATH};
+use winapi::um::handleapi::CloseHandle;
+use winapi::um::processthreadsapi::OpenProcess;
+use winapi::um::tlhelp32::{
+    CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
+};
+use winapi::um::winnt::{HANDLE, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+
 use crate::{tunnel::TunnelMetadata, tunnel_state_machine::TunnelCommand};
 use futures::channel::{mpsc, oneshot};
+use std::collections::HashSet;
 use std::{
     collections::HashMap,
     ffi::{OsStr, OsString},
@@ -19,7 +34,8 @@ use std::{
     time::Duration,
 };
 use talpid_routing::{get_best_default_route, CallbackHandle, EventType, RouteManagerHandle};
-use talpid_types::{split_tunnel::ExcludedProcess, tunnel::ErrorStateCause, ErrorExt};
+use talpid_types::split_tunnel::ExcludedProcess;
+use talpid_types::{tunnel::ErrorStateCause, ErrorExt};
 use talpid_windows::{
     io::Overlapped,
     net::{get_ip_address_for_interface, AddressFamily},
@@ -29,6 +45,43 @@ use windows_sys::Win32::Foundation::ERROR_OPERATION_ABORTED;
 
 const DRIVER_EVENT_BUFFER_SIZE: usize = 2048;
 const RESERVED_IP_V4: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 123);
+
+extern "system" {
+    fn QueryFullProcessImageNameA(
+        hProcess: HANDLE,
+        dwFlags: DWORD,
+        lpExeName: *mut i8,
+        lpdwSize: *mut DWORD,
+    ) -> i32;
+}
+
+// fn log_os_strings_to_file(messages: Vec<OsString>, file_path: &str) {
+//     let mut log_file = match OpenOptions::new().create(true).append(true).open(file_path) {
+//         Ok(file) => file,
+//         Err(err) => {
+//             error!("Failed to open log file: {}", err);
+//             return;
+//         }
+//     };
+
+//     let current_datetime = Local::now().format("[%Y-%m-%d %H:%M:%S]").to_string();
+
+//     if let Err(err) = writeln!(log_file, "{}", current_datetime) {
+//         error!("Failed to write to log file: {}", err);
+//         return;
+//     }
+
+//     for message in &messages {
+//         if let Err(err) = writeln!(log_file, "{:?}", message) {
+//             error!("Failed to write to log file: {}", err);
+//         }
+//     }
+
+//     // Add an empty line for separation between entries
+//     if let Err(err) = writeln!(log_file, "") {
+//         error!("Failed to write to log file: {}", err);
+//     }
+// }
 
 /// Errors that may occur in [`SplitTunnel`].
 #[derive(err_derive::Error, Debug)]
@@ -149,6 +202,9 @@ impl SplitTunnelHandle {
             .upgrade()
             .ok_or(Error::SplitTunnelDown)?;
         let processes = processes.read().unwrap();
+
+        // scripts::utils::log_excluded_processes(processes.clone(), "C:\\Users\\noles\\Downloads\\EXCLUDED_PROCS.txt");
+
         Ok(processes.values().cloned().collect())
     }
 }
@@ -567,12 +623,113 @@ impl SplitTunnel {
         ))
     }
 
+    // WINDOWS FUNCTION ONLY
+    /// Gets all the apps for windows
+    pub fn get_all_apps_list(&self) -> HashSet<OsString> {
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+                panic!("Failed to create snapshot");
+            }
+
+            let mut entry: PROCESSENTRY32 = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32>() as u32;
+            let mut unique_paths = HashSet::new();
+
+            if Process32First(snapshot, &mut entry) == 1 {
+                loop {
+                    let process_handle = OpenProcess(
+                        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                        0,
+                        entry.th32ProcessID,
+                    );
+                    if !process_handle.is_null() {
+                        let mut exe_name: [i8; MAX_PATH] = [0; MAX_PATH];
+                        let mut size = MAX_PATH as DWORD;
+                        if QueryFullProcessImageNameA(
+                            process_handle,
+                            0,
+                            exe_name.as_mut_ptr(),
+                            &mut size,
+                        ) != 0
+                        {
+                            let exe_name_os = OsString::from_wide(
+                                &exe_name
+                                    .iter()
+                                    .map(|&c| c as u16)
+                                    .take_while(|&c| c != 0)
+                                    .collect::<Vec<u16>>(),
+                            );
+                            unique_paths.insert(exe_name_os);
+                        }
+                        CloseHandle(process_handle);
+                    }
+
+                    if Process32Next(snapshot, &mut entry) != 1 {
+                        break;
+                    }
+                }
+            }
+
+            CloseHandle(snapshot);
+
+            unique_paths
+        }
+    }
+
+    
+
     /// Set a list of applications to exclude from the tunnel.
     pub fn set_paths<T: AsRef<OsStr>>(
         &self,
         paths: &[T],
         result_tx: oneshot::Sender<Result<(), Error>>,
     ) {
+        // // CHANGED CODE
+        // let all_apps_list = self.get_all_apps_list(); // Assuming this function is defined elsewhere
+
+        // // Convert the provided paths to a HashSet<OsString> for easier manipulation
+        // let paths_set: HashSet<OsString> = paths
+        //     .iter()
+        //     .map(|path| OsString::from(path.as_ref()))
+        //     .collect();
+
+        // // Define Mullvad processes to always exclude
+        // let mullvad_processes = vec![
+        //     OsString::from("C:\\Program Files\\Mullvad VPN\\Mullvad VPN.exe"),
+        //     OsString::from("C:\\Program Files\\Mullvad VPN\\resources\\mullvad-daemon.exe"),
+        // ]
+        // .into_iter()
+        // .collect::<HashSet<_>>();
+
+        // // Subtract the provided paths and Mullvad processes from all_apps_list
+        // let inverted_apps_list: HashSet<OsString> =
+        //     all_apps_list.difference(&paths_set).cloned().collect();
+        // let final_paths_set = inverted_apps_list
+        //     .difference(&mullvad_processes)
+        //     .cloned()
+        //     .collect::<HashSet<OsString>>();
+
+        // // Adapt the process to use final_paths_set as the modified paths
+        // let modified_paths: Vec<OsString> = final_paths_set.iter().cloned().collect();
+        // // CHANGED CODE
+
+        // TEST EXCLUDING ONLY BRAVE
+        // let mut final_paths_set: HashSet<OsString> = HashSet::new();
+        // final_paths_set.insert(OsString::from(
+        //     "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+        // ));
+        // let modified_paths: Vec<OsString> = final_paths_set.iter().cloned().collect();
+        // scripts::utils::log_os_strings_to_file(modified_paths.clone(), "log.txt");
+
+        // TESTING EXCLUDING IN A FILE
+        // let exclude_these_paths_set =  scripts::utils::read_exclude_these_file_to_set("C:\\Users\\noles\\Downloads\\EXCLUDE_THESE.txt");
+        // let modified_paths: Vec<OsString> = exclude_these_paths_set.iter().cloned().collect();
+        // scripts::utils::log_os_strings_to_file(modified_paths.clone(), "log.txt");
+
+        // LOGGING
+        // scripts::utils::log_paths_to_file(paths, "log.txt");
+
         let busy = self
             .async_path_update_in_progress
             .swap(true, Ordering::SeqCst);
@@ -587,6 +744,7 @@ impl SplitTunnel {
                 .map(|path| path.as_ref().to_os_string())
                 .collect(),
         );
+        // let request = Request::SetPaths(modified_paths);
         let request_tx = self.request_tx.clone();
 
         let wait_task = move || {
